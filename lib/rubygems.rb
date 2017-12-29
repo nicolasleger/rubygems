@@ -10,7 +10,7 @@ require 'rbconfig'
 require 'thread'
 
 module Gem
-  VERSION = "2.6.13"
+  VERSION = "2.7.4"
 end
 
 # Must be first since it unloads the prelude from 1.9.2
@@ -47,9 +47,7 @@ require 'rubygems/errors'
 # As of RubyGems 1.3.2, RubyGems will load plugins installed in gems or
 # $LOAD_PATH.  Plugins must be named 'rubygems_plugin' (.rb, .so, etc) and
 # placed at the root of your gem's #require_path.  Plugins are discovered via
-# Gem::find_files and then loaded.  Take care when implementing a plugin as your
-# plugin file may be loaded multiple times if multiple versions of your gem
-# are installed.
+# Gem::find_files and then loaded.
 #
 # For an example plugin, see the {Graph gem}[https://github.com/seattlerb/graph]
 # which adds a `gem graph` command.
@@ -163,7 +161,7 @@ module Gem
   # these are defined in Ruby 1.8.7, hence the need for this convoluted setup.
 
   READ_BINARY_ERRORS = begin
-    read_binary_errors = [Errno::EACCES]
+    read_binary_errors = [Errno::EACCES, Errno::EROFS, Errno::ENOSYS]
     read_binary_errors << Errno::ENOTSUP if Errno.const_defined?(:ENOTSUP)
     read_binary_errors
   end.freeze
@@ -173,12 +171,12 @@ module Gem
   # these are defined in Ruby 1.8.7.
 
   WRITE_BINARY_ERRORS = begin
-    write_binary_errors = []
+    write_binary_errors = [Errno::ENOSYS]
     write_binary_errors << Errno::ENOTSUP if Errno.const_defined?(:ENOTSUP)
     write_binary_errors
   end.freeze
 
-  USE_BUNDLER_FOR_GEMDEPS = true # :nodoc:
+  USE_BUNDLER_FOR_GEMDEPS = !ENV['DONT_USE_BUNDLER_FOR_GEMDEPS'] # :nodoc:
 
   @@win_platform = nil
 
@@ -690,7 +688,7 @@ An Array (#{env.inspect}) was passed in from #{caller[3]}
 
     unless test_syck
       begin
-        gem 'psych', '>= 1.2.1'
+        gem 'psych', '>= 2.0.0'
       rescue Gem::LoadError
         # It's OK if the user does not have the psych gem installed.  We will
         # attempt to require the stdlib version
@@ -714,6 +712,7 @@ An Array (#{env.inspect}) was passed in from #{caller[3]}
     end
 
     require 'yaml'
+    require 'rubygems/safe_yaml'
 
     # If we're supposed to be using syck, then we may have to force
     # activate it via the YAML::ENGINE API.

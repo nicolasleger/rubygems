@@ -152,14 +152,22 @@ class Gem::Command
   #--
   # TODO: replace +domain+ with a parameter to suppress suggestions
 
-  def show_lookup_failure(gem_name, version, errors, domain)
+  def show_lookup_failure(gem_name, version, errors, domain, required_by = nil)
+    gem = "'#{gem_name}' (#{version})"
+    msg = String.new "Could not find a valid gem #{gem}"
+
     if errors and !errors.empty?
-      msg = "Could not find a valid gem '#{gem_name}' (#{version}), here is why:\n".dup
+      msg << ", here is why:\n"
       errors.each { |x| msg << "          #{x.wordy}\n" }
-      alert_error msg
     else
-      alert_error "Could not find a valid gem '#{gem_name}' (#{version}) in any repository"
+      if required_by and gem != required_by then
+        msg << " (required by #{required_by}) in any repository"
+      else
+        msg << " in any repository"
+      end
     end
+
+    alert_error msg
 
     unless domain == :local then # HACK
       suggestions = Gem::SpecFetcher.fetcher.suggest_gems_from_name gem_name
@@ -300,7 +308,10 @@ class Gem::Command
 
     options[:build_args] = build_args
 
-    self.ui = Gem::SilentUI.new if options[:silent]
+    if options[:silent]
+      old_ui = self.ui
+      self.ui = ui = Gem::SilentUI.new
+    end
 
     if options[:help] then
       show_help
@@ -308,6 +319,11 @@ class Gem::Command
       @when_invoked.call options
     else
       execute
+    end
+  ensure
+    if ui
+      self.ui = old_ui
+      ui.close
     end
   end
 

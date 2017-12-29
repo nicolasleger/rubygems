@@ -1480,8 +1480,11 @@ class TestGem < Gem::TestCase
   end
 
   LIB_PATH = File.expand_path "../../../lib".dup.untaint, __FILE__.dup.untaint
-  BUNDLER_LIB_PATH = File.expand_path $LOAD_PATH.find {|lp| File.file?(File.join(lp, "bundler.rb")) }.dup.untaint
-  BUNDLER_FULL_NAME = "bundler-#{Bundler::VERSION}"
+
+  if Gem::USE_BUNDLER_FOR_GEMDEPS
+    BUNDLER_LIB_PATH = File.expand_path $LOAD_PATH.find {|lp| File.file?(File.join(lp, "bundler.rb")) }.dup.untaint
+    BUNDLER_FULL_NAME = "bundler-#{Bundler::VERSION}"
+  end
 
   def add_bundler_full_name(names)
     return names unless Gem::USE_BUNDLER_FOR_GEMDEPS
@@ -1509,7 +1512,7 @@ class TestGem < Gem::TestCase
 
     path = File.join @tempdir, "gem.deps.rb"
     cmd = [Gem.ruby.dup.untaint, "-I#{LIB_PATH.untaint}",
-           "-I#{BUNDLER_LIB_PATH.untaint}", "-rubygems"]
+           "-I#{BUNDLER_LIB_PATH.untaint}", "-rrubygems"]
     if RUBY_VERSION < '1.9'
       cmd << "-e 'puts Gem.loaded_specs.values.map(&:full_name).sort'"
       cmd = cmd.join(' ')
@@ -1529,7 +1532,7 @@ class TestGem < Gem::TestCase
     out = IO.popen(cmd, &:read).split(/\n/)
 
     assert_equal ["b-1", "c-1"], out - out0
-  end
+  end if Gem::USE_BUNDLER_FOR_GEMDEPS
 
   def test_looks_for_gemdeps_files_automatically_on_start_in_parent_dir
     util_clear_gems
@@ -1552,7 +1555,7 @@ class TestGem < Gem::TestCase
 
     path = File.join @tempdir, "gem.deps.rb"
     cmd = [Gem.ruby.dup.untaint, "-Csub1", "-I#{LIB_PATH.untaint}",
-           "-I#{BUNDLER_LIB_PATH.untaint}", "-rubygems"]
+           "-I#{BUNDLER_LIB_PATH.untaint}", "-rrubygems"]
     if RUBY_VERSION < '1.9'
       cmd << "-e 'puts Gem.loaded_specs.values.map(&:full_name).sort'"
       cmd = cmd.join(' ')
@@ -1574,7 +1577,7 @@ class TestGem < Gem::TestCase
     Dir.rmdir "sub1"
 
     assert_equal ["b-1", "c-1"], out - out0
-  end
+  end if Gem::USE_BUNDLER_FOR_GEMDEPS
 
   def test_register_default_spec
     Gem.clear_default_specs
@@ -1587,7 +1590,7 @@ class TestGem < Gem::TestCase
 
     assert_equal old_style, Gem.find_unresolved_default_spec("foo.rb")
     assert_equal old_style, Gem.find_unresolved_default_spec("bar.rb")
-    assert_equal nil, Gem.find_unresolved_default_spec("baz.rb")
+    assert_nil              Gem.find_unresolved_default_spec("baz.rb")
 
     Gem.clear_default_specs
 
@@ -1600,8 +1603,8 @@ class TestGem < Gem::TestCase
 
     assert_equal new_style, Gem.find_unresolved_default_spec("foo.rb")
     assert_equal new_style, Gem.find_unresolved_default_spec("bar.rb")
-    assert_equal nil, Gem.find_unresolved_default_spec("exec")
-    assert_equal nil, Gem.find_unresolved_default_spec("README")
+    assert_nil              Gem.find_unresolved_default_spec("exec")
+    assert_nil              Gem.find_unresolved_default_spec("README")
   end
 
   def test_default_gems_use_full_paths
@@ -1756,7 +1759,7 @@ class TestGem < Gem::TestCase
     else
       platform = " #{platform}"
     end
-    expected = if Gem::USE_BUNDLER_FOR_GEMDEPS 
+    expected = if Gem::USE_BUNDLER_FOR_GEMDEPS
       <<-EXPECTED
 Could not find gem 'a#{platform}' in any of the gem sources listed in your Gemfile.
 You may need to `gem install -g` to install missing gems
@@ -1775,7 +1778,7 @@ You may need to `gem install -g` to install missing gems
     end
   ensure
     ENV['RUBYGEMS_GEMDEPS'] = rubygems_gemdeps
-  end
+  end if Gem::USE_BUNDLER_FOR_GEMDEPS
 
   def test_use_gemdeps_specific
     skip 'Insecure operation - read' if RUBY_VERSION <= "1.8.7"
@@ -1796,6 +1799,13 @@ You may need to `gem install -g` to install missing gems
     assert_equal add_bundler_full_name(%W(a-1)), loaded_spec_names
   ensure
     ENV['RUBYGEMS_GEMDEPS'] = rubygems_gemdeps
+  end
+
+  def test_operating_system_defaults
+    operating_system_defaults = Gem.operating_system_defaults
+
+    assert operating_system_defaults != nil
+    assert operating_system_defaults.is_a? Hash
   end
 
   def test_platform_defaults

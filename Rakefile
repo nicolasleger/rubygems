@@ -13,6 +13,28 @@ rescue ::LoadError
   require 'yaml'
 end
 
+if Gem.win_platform?
+  # For ruby < 2.0, minitest files need to copied into repo lib folder
+  if RUBY_VERSION <= '1.9.3'
+    dest = File.dirname(__FILE__).gsub(/\//, "\\")
+    src_dir = Dir.glob("#{Gem.default_dir}/gems/minitest-*").sort
+    if src_dir.last
+      src = src_dir.last.gsub(/\//, "\\")
+      `md #{dest}\\lib\\minitest`
+      `copy #{src}\\lib\\minitest.rb #{dest}\\lib`
+      `copy #{src}\\lib\\minitest\\*.* #{dest}\\lib\\minitest`
+    end
+  end
+
+  require "rake/testtask"
+
+  desc "Runs tests without hoe, typically used with windows"
+  Rake::TestTask.new(:test_no_hoe) do |t|
+    t.libs << "test"
+    t.test_files = FileList['test/**/test_*.rb']
+  end
+end
+
 begin
   require 'hoe'
 rescue Gem::ConflictError => e
@@ -66,9 +88,8 @@ hoe = Hoe.spec 'rubygems-update' do
   dependency 'builder',       '~> 2.1',   :dev
   dependency 'hoe-seattlerb', '~> 1.2',   :dev
   dependency 'rdoc',          '~> 4.0',   :dev
-  dependency 'ZenTest',       '~> 4.5',   :dev
   dependency 'rake',          '~> 10.5',  :dev
-  dependency 'minitest',      '~> 4.0',   :dev
+  dependency 'minitest',      '~> 5.0',   :dev
 
   self.extra_rdoc_files = Dir["*.rdoc"] + %w[
     CVE-2013-4287.txt
@@ -95,14 +116,21 @@ Hoe::Package.instance_method(:install_gem).tap do |existing_install_gem|
   end
 end
 
-Hoe::DEFAULT_CONFIG["exclude"] = %r[#{Hoe::DEFAULT_CONFIG["exclude"]}|\./bundler/(?!lib|man|exe|[^/]+\.md)]ox
+Hoe::DEFAULT_CONFIG["exclude"] = %r[#{Hoe::DEFAULT_CONFIG["exclude"]}|\./bundler/(?!lib|man|exe|[^/]+\.md|bundler.gemspec)|doc/]ox
 
 v = hoe.version
 
 hoe.testlib      = :minitest
 hoe.test_prelude = <<-RUBY.gsub("\n", ";")
-  gem "minitest", "~> 4.0"
+  gem "minitest", "~> 5.0"
   $:.unshift #{File.expand_path("../bundler/lib", __FILE__).dump}
+  if "1.8" < RUBY_VERSION && RUBY_VERSION < "2.2"
+    module Gem
+      @path_to_default_spec_map.delete_if do |_path, spec|
+        spec.name == "bundler"
+      end
+    end
+  end
 RUBY
 
 Rake::Task['docs'].clear
@@ -144,8 +172,8 @@ end
 task(:newb).prerequisites.unshift "bundler:checkout"
 
 desc "Install gems needed to run the tests"
-task :install_test_deps => :clean_env do
-  sh "gem install minitest -v '~> 4.0'"
+task :install_test_deps => :clean do
+  sh "gem install minitest -v '~> 5.0'"
 end
 
 begin
@@ -168,7 +196,7 @@ end
 
 task :prerelease => [:clobber, :check_manifest, :test]
 
-task :postrelease => %w[upload guides:publish blog:publish publish_docs]
+task :postrelease => %w[upload guides:publish blog:publish]
 
 file "pkg/rubygems-#{v}" => "pkg/rubygems-update-#{v}" do |t|
   require 'find'
@@ -219,10 +247,8 @@ end
 desc "Upload release to rubygems.org"
 task :upload => %w[upload_to_s3]
 
-on_master = `git branch --list master`.strip == '* master'
-on_master = true if ENV['FORCE']
-
-Rake::Task['publish_docs'].clear unless on_master
+# Ignonre to publish rdoc to docs.seattlerb.org
+Rake::Task['publish_docs'].clear
 
 directory '../guides.rubygems.org' do
   sh 'git', 'clone',
@@ -265,6 +291,9 @@ namespace 'guides' do
 
   desc 'Updates and publishes the guides for the just-released RubyGems'
   task 'publish'
+
+  on_master = `git branch --list master`.strip == '* master'
+  on_master = true if ENV['FORCE']
 
   task 'publish' => %w[
     guides:pull

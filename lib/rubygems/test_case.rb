@@ -25,7 +25,9 @@ unless Gem::Dependency.new('rdoc', '>= 3.10').matching_specs.empty?
   gem 'json'
 end
 
-require 'bundler'
+if Gem::USE_BUNDLER_FOR_GEMDEPS
+  require 'bundler'
+end
 require 'minitest/autorun'
 
 require 'rubygems/deprecate'
@@ -84,7 +86,7 @@ end
 #
 # Tests are always run at a safe level of 1.
 
-class Gem::TestCase < MiniTest::Unit::TestCase
+class Gem::TestCase < (defined?(Minitest::Test) ? Minitest::Test : MiniTest::Unit::TestCase)
 
   attr_accessor :fetcher # :nodoc:
 
@@ -235,7 +237,10 @@ class Gem::TestCase < MiniTest::Unit::TestCase
     @current_dir = Dir.pwd
     @fetcher     = nil
 
-    Bundler.ui                     = Bundler::UI::Silent.new
+    if Gem::USE_BUNDLER_FOR_GEMDEPS
+      Bundler.ui                     = Bundler::UI::Silent.new
+    end
+    @back_ui                       = Gem::DefaultUserInteraction.ui
     @ui                            = Gem::MockGemUi.new
     # This needs to be a new instance since we call use_ui(@ui) when we want to
     # capture output
@@ -330,7 +335,9 @@ class Gem::TestCase < MiniTest::Unit::TestCase
     Gem.loaded_specs.clear
     Gem.clear_default_specs
     Gem::Specification.unresolved_deps.clear
-    Bundler.reset!
+    if Gem::USE_BUNDLER_FOR_GEMDEPS
+      Bundler.reset!
+    end
 
     Gem.configuration.verbose = true
     Gem.configuration.update_sources = true
@@ -420,6 +427,8 @@ class Gem::TestCase < MiniTest::Unit::TestCase
     Gem::Specification._clear_load_cache
     Gem::Specification.unresolved_deps.clear
     Gem::refresh
+
+    @back_ui.close
   end
 
   def common_installer_setup
